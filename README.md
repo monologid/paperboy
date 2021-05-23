@@ -34,3 +34,7 @@ And go to `core/storage.py` and add the storage engine.
 ### Author
 
 [Ais](https://github.com/madebyais)
+
+### License
+
+[Apache-2.0](LICENSE)
