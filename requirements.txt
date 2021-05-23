@@ -1,0 +1,9 @@
+cloudscraper
+coloredlogs
+flask
+flask-cors
+minio
+python-dotenv
+redis
+requests
+schedule
