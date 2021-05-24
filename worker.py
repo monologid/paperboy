@@ -7,10 +7,16 @@ from database import DB
 import importlib
 import json
 import schedule
+import threading
 import time
 import logging
 
 registered_tasks = []
+
+
+def thread(job):
+    job_thread = threading.Thread(target=job)
+    job_thread.start()
 
 
 class Executor:
@@ -138,7 +144,7 @@ class Task:
                         scheduler = schedule.every().sunday.at(at)
 
                     Log(f"{log_task_name} day={item['day']} at={at} ... Done").info()
-                    scheduler.do(executor.run).tag(name)
+                    scheduler.do(thread, executor.run).tag(name)
         else:
             if schedule_type == 'seconds':
                 scheduler = schedule.every(value).seconds
@@ -148,7 +154,7 @@ class Task:
                 scheduler = schedule.every(value).hours
 
             Log(f"{log_task_name} value={value} ... Done").info()
-            scheduler.do(executor.run).tag(name)
+            scheduler.do(thread, executor.run).tag(name)
 
     def deregister_task(self, tasks: list, existing_tasks: list):
         """
@@ -171,7 +177,8 @@ class Task:
                     Log(f"Failed to deregister existing task, due to connection error to the storage").error()
 
 
-def worker(storage):
+def worker():
+    storage = DB
     t = Task()
 
     try:
@@ -180,26 +187,28 @@ def worker(storage):
             t.deregister_task(registered_tasks, [])
             return
 
-        tasks = json.loads(result)
+        if result is not None:
+            tasks = json.loads(result)
 
-        for task in tasks:
-            if t.is_exist(task):
-                continue
+            for task in tasks:
+                if t.is_exist(task):
+                    continue
 
-            t.register_task(task, registered_tasks)
+                t.register_task(task, registered_tasks)
 
-        t.deregister_task(registered_tasks, tasks)
+            t.deregister_task(registered_tasks, tasks)
     except Exception as e:
-        Log('Unable to connect to the storage').error()
-
-
-Log(f"Initialize storage connection, engine={Config.DB_ENGINE}").info()
-schedule.every().second.do(worker, DB)
+        Log(f"Unable to connect to the storage, error={e}").error()
+        logging.exception("Unable to connect to the storage")
 
 
 if __name__ == '__main__':
+    Log(f"Initialize storage connection, engine={Config.DB_ENGINE}").info()
+    schedule.every().second.do(thread, worker)
+
     Log('Worker started').info()
     Log('').info()
+
     shutdown = Graceful()
     while not shutdown.kill_now:
         schedule.run_pending()
