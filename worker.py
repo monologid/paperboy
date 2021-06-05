@@ -6,6 +6,7 @@ from common import constant
 from database import DB
 import importlib
 import json
+import os
 import schedule
 import threading
 import time
@@ -113,6 +114,7 @@ class Task:
             for item in data['cron']:
                 self.register_cron(task_name, executor, item)
 
+            self.storage.set(constant.KeyTasks, json.dumps(tasks))
             Log(f"Registering new task, name={task_name} ... Done").info()
         except Exception as e:
             Log(f"Failed to register new task, error={e}").error()
@@ -176,9 +178,9 @@ class Task:
                 except Exception as e:
                     Log(f"Failed to deregister existing task, due to connection error to the storage").error()
 
+storage = DB
 
 def worker():
-    storage = DB
     t = Task()
 
     try:
@@ -187,25 +189,47 @@ def worker():
             t.deregister_task(registered_tasks, [])
             return
 
-        if result is not None:
-            tasks = json.loads(result)
+        tasks = json.loads(result)
 
-            for task in tasks:
-                if t.is_exist(task):
-                    continue
+        for task in tasks:
+            if t.is_exist(task):
+                continue
 
-                t.register_task(task, registered_tasks)
+            t.register_task(task, registered_tasks)
 
-            t.deregister_task(registered_tasks, tasks)
+        t.deregister_task(registered_tasks, tasks)
     except Exception as e:
         Log(f"Unable to connect to the storage, error={e}").error()
         logging.exception("Unable to connect to the storage")
 
 
+def load_tasks_from_disk():
+    Log('Loading tasks from disk ...').info()
+    Log('').info()
+
+    storage.set(constant.KeyTasks, json.dumps([]))
+    temp_data = os.listdir('tasks')
+    tasks = []
+    for filename in temp_data:
+        if filename != '.gitkeep':
+            tasks.append(str(filename).replace('.json', ''))
+
+    t = Task()
+    for task in tasks:
+        t.register_task(task, registered_tasks)
+
+    Log('').info()
+    Log('Loading tasks from disk ... Done').info()
+
 if __name__ == '__main__':
     Log(f"Initialize storage connection, engine={Config.DB_ENGINE}").info()
+    Log('').info()
+
+    load_tasks_from_disk()
+
     schedule.every().second.do(thread, worker)
 
+    Log('').info()
     Log('Worker started').info()
     Log('').info()
 
